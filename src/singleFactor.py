@@ -1,8 +1,54 @@
 from __future__ import annotations
 
+"""Single index regression utilities.
+
+Example:
+    result = single_index_regression("NVDA", "^GSPC", period="1y")
+    for key, value in result.items():
+        print(f"{key}: {value:,.4f}".replace(",", "_"))
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import yfinance as yf
+
+
+def _load_returns(
+    stock_ticker: str,
+    benchmark_ticker: str,
+    *,
+    period: str,
+    interval: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    prices = yf.download(
+        [stock_ticker, benchmark_ticker],
+        period=period,
+        interval=interval,
+        auto_adjust=True,
+        progress=False,
+    )
+    if prices.empty:
+        raise ValueError("No data returned from yfinance.")
+
+    close = prices["Close"] if "Close" in prices else prices["Adj Close"]
+    returns = close.pct_change().dropna()
+    returns = returns[[stock_ticker, benchmark_ticker]].dropna()
+    if returns.empty:
+        raise ValueError("Not enough data to compute returns.")
+
+    stock_returns = returns[stock_ticker].to_numpy()
+    benchmark_returns = returns[benchmark_ticker].to_numpy()
+    return stock_returns, benchmark_returns
+
+
+def _single_index_fit(
+    stock_returns: np.ndarray,
+    benchmark_returns: np.ndarray,
+) -> tuple[float, float]:
+    x = np.column_stack([np.ones_like(benchmark_returns), benchmark_returns])
+    beta_vec, *_ = np.linalg.lstsq(x, stock_returns, rcond=None)
+    alpha, beta = float(beta_vec[0]), float(beta_vec[1])
+    return alpha, beta
 
 
 def _plot_single_index(
@@ -36,26 +82,10 @@ def single_index_regression(
     interval: str = "1d",
     plot: bool = True,
 ) -> dict[str, float]:
-    prices = yf.download(
-        [stock_ticker, benchmark_ticker],
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
+    stock_returns, benchmark_returns = _load_returns(
+        stock_ticker, benchmark_ticker, period=period, interval=interval
     )
-    if prices.empty:
-        raise ValueError("No data returned from yfinance.")
-
-    close = prices["Close"] if "Close" in prices else prices["Adj Close"]
-    returns = close.pct_change().dropna()
-    returns = returns[[stock_ticker, benchmark_ticker]].dropna()
-
-    stock_returns = returns[stock_ticker].to_numpy()
-    benchmark_returns = returns[benchmark_ticker].to_numpy()
-
-    x = np.column_stack([np.ones_like(benchmark_returns), benchmark_returns])
-    beta_vec, *_ = np.linalg.lstsq(x, stock_returns, rcond=None)
-    alpha, beta = float(beta_vec[0]), float(beta_vec[1])
+    alpha, beta = _single_index_fit(stock_returns, benchmark_returns)
 
     fitted = alpha + beta * benchmark_returns
     resid = stock_returns - fitted
@@ -81,9 +111,37 @@ def single_index_regression(
     }
 
 
+def daily_idiosyncratic_volatility(
+    stock_ticker: str,
+    benchmark_ticker: str,
+    *,
+    period: str = "1y",
+    interval: str = "1d",
+) -> dict[str, float]:
+    """Estimate daily idiosyncratic volatility via a single-index regression."""
+    stock_returns, benchmark_returns = _load_returns(
+        stock_ticker, benchmark_ticker, period=period, interval=interval
+    )
+    alpha, beta = _single_index_fit(stock_returns, benchmark_returns)
+
+    fitted = alpha + beta * benchmark_returns
+    resid = stock_returns - fitted
+    observations = int(resid.size)
+    denom = max(observations - 2, 1)
+    idio_vol = float(np.sqrt(np.sum(resid**2) / denom))
+
+    return {
+        "daily_idiosyncratic_volatility": idio_vol,
+        "alpha": alpha,
+        "beta": beta,
+        "observations": float(observations),
+    }
+
+
 def main() -> None:
     result = single_index_regression("NVDA", "^GSPC", period="1y")
-    print(result)
+    for key, value in result.items():
+        print(f"{key}: {value:,.4f}".replace(",", "_"))
 
 
 if __name__ == "__main__":

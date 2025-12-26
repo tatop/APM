@@ -9,7 +9,7 @@ APM provides utilities for analyzing portfolio performance using the single-inde
 ## Installation
 
 ```bash
-pip install -e .
+uv sync
 ```
 
 ## Dependencies
@@ -18,6 +18,14 @@ pip install -e .
 - matplotlib >= 3.10.8
 - numpy >= 2.4.0
 - yfinance >= 1.0
+
+## Tests
+
+Run the unit tests with uv:
+
+```bash
+uv run python -m unittest
+```
 
 ## Modules
 
@@ -36,13 +44,24 @@ Single-index regression for analyzing stock performance relative to a benchmark.
 
   Returns a dict with metrics and optional scatter plot.
 
+- `daily_idiosyncratic_volatility(stock_ticker, benchmark_ticker, *, period, interval)`:
+  Estimates daily idiosyncratic volatility from a single-index regression:
+  - **daily_idiosyncratic_volatility**: Residual volatility (daily, decimal)
+  - **alpha**: Stock's excess return relative to benchmark
+  - **beta**: Stock's sensitivity to market movements
+  - **observations**: Number of data points used
+
 **Example:**
 ```python
-from src.singleFactor import single_index_regression
+from src.singleFactor import daily_idiosyncratic_volatility, single_index_regression
 
 result = single_index_regression("NVDA", "^GSPC", period="1y")
 print(result)
 # {'alpha': 0.0012, 'beta': 1.45, 'r_squared': 0.68, 'observations': 252.0}
+
+idio = daily_idiosyncratic_volatility("NVDA", "^GSPC", period="1y")
+print(idio)
+# {'daily_idiosyncratic_volatility': 0.0123, 'alpha': 0.0012, 'beta': 1.45, 'observations': 252.0}
 ```
 
 ### volatility.py
