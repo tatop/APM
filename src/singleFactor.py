@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
+import numpy as np
+import yfinance as yf
+
 """Single index regression utilities.
 
 Example:
@@ -7,10 +11,6 @@ Example:
     for key, value in result.items():
         print(f"{key}: {value:,.4f}".replace(",", "_"))
 """
-
-import matplotlib.pyplot as plt
-import numpy as np
-import yfinance as yf
 
 
 def _load_returns(
@@ -92,6 +92,9 @@ def single_index_regression(
     ss_res = float(np.sum(resid**2))
     ss_tot = float(np.sum((stock_returns - stock_returns.mean()) ** 2))
     r_squared = 1.0 - ss_res / ss_tot if ss_tot else 0.0
+    observations = int(resid.size)
+    denom = max(observations - 2, 1)
+    idio_vol = float(np.sqrt(ss_res / denom))
 
     if plot:
         _plot_single_index(
@@ -107,39 +110,16 @@ def single_index_regression(
         "alpha": alpha,
         "beta": beta,
         "r_squared": r_squared,
-        "observations": float(len(stock_returns)),
-    }
-
-
-def daily_idiosyncratic_volatility(
-    stock_ticker: str,
-    benchmark_ticker: str,
-    *,
-    period: str = "1y",
-    interval: str = "1d",
-) -> dict[str, float]:
-    """Estimate daily idiosyncratic volatility via a single-index regression."""
-    stock_returns, benchmark_returns = _load_returns(
-        stock_ticker, benchmark_ticker, period=period, interval=interval
-    )
-    alpha, beta = _single_index_fit(stock_returns, benchmark_returns)
-
-    fitted = alpha + beta * benchmark_returns
-    resid = stock_returns - fitted
-    observations = int(resid.size)
-    denom = max(observations - 2, 1)
-    idio_vol = float(np.sqrt(np.sum(resid**2) / denom))
-
-    return {
-        "daily_idiosyncratic_volatility": idio_vol,
-        "alpha": alpha,
-        "beta": beta,
+        f"{stock_ticker}_daily_idiosyncratic_volatility": idio_vol,
         "observations": float(observations),
     }
 
 
 def main() -> None:
-    result = single_index_regression("NVDA", "^GSPC", period="1y")
+    stock_ticker = "NVDA"
+    benchmark_ticker = "^GSPC"
+    result = single_index_regression(stock_ticker, benchmark_ticker, period="1y")
+    print("Single index regression:")
     for key, value in result.items():
         print(f"{key}: {value:,.4f}".replace(",", "_"))
 

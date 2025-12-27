@@ -9,3 +9,5 @@ dependencies = [
     "numpy>=2.4.0",
     "yfinance>=1.0",
 ]
+
+
