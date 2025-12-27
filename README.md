@@ -98,6 +98,36 @@ positions = [
 result = portfolio_volatility(positions, market_volatility=0.014)
 ```
 
+### marketHedge.py
+
+Compute the market hedge notional market value (NMV) needed to offset a portfolio's
+aggregate market exposure.
+
+**Classes:**
+
+- `Position`: Immutable dataclass representing a portfolio position
+  - `notional`: Dollar value of position
+  - **beta**: Market sensitivity
+
+**Functions:**
+
+- `market_hedge(positions)`:
+  Calculates:
+  - **dollar_betas**: Notional multiplied by beta for each position
+  - **portfolio_dollar_beta**: Sum of individual dollar betas
+  - **market_hedge_nmv**: NMV required to hedge market exposure (negative of portfolio beta)
+
+**Example:**
+```python
+from src.marketHedge import Position, market_hedge
+
+positions = [
+    Position(notional=10_000_000, beta=1.2),
+    Position(notional=5_000_000, beta=0.7),
+]
+result = market_hedge(positions)
+```
+
 ## License
 
 MIT

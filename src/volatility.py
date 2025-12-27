@@ -77,7 +77,10 @@ def main() -> None:
     ]
     result = portfolio_volatility(positions, market_volatility=0.014)
     for key, value in result.items():
-        print(f"{key}: ${value:,.2f}".replace(",", "_"))
+        if key.endswith("var"):
+            print(f"{key}: {value:,.4f}".replace(",", "_"))
+        else:
+            print(f"{key}: ${value:,.2f}".replace(",", "_"))
 
 
 if __name__ == "__main__":
