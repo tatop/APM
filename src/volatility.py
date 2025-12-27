@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Iterable
+
+import numpy as np
+
 """Portfolio volatility utilities.
 
 Example:
@@ -12,11 +17,6 @@ Example:
     for key, value in result.items():
         print(f"{key}: {value:,.4f}".replace(",", "_"))
 """
-
-from dataclasses import dataclass
-from typing import Iterable
-
-import numpy as np
 
 
 TRADING_DAYS = 252
@@ -77,7 +77,7 @@ def main() -> None:
     ]
     result = portfolio_volatility(positions, market_volatility=0.014)
     for key, value in result.items():
-        print(f"{key}: {value:,.4f}".replace(",", "_"))
+        print(f"{key}: ${value:,.2f}".replace(",", "_"))
 
 
 if __name__ == "__main__":
