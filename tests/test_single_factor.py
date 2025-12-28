@@ -4,7 +4,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from src.singleFactor import single_index_regression
+from src.apm import single_index_regression
 
 
 def _prices_from_returns(returns: list[float], start: float = 100.0) -> np.ndarray:
@@ -44,7 +44,7 @@ class TestSingleIndexRegression(unittest.TestCase):
 
         prices = _create_mock_prices("STOCK", "BENCH", stock_returns, benchmark_returns)
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("STOCK", "BENCH", period="5d", plot=False)
 
         self.assertAlmostEqual(result["alpha"], alpha, places=10)
@@ -65,7 +65,7 @@ class TestSingleIndexRegression(unittest.TestCase):
             "AAA", "SPX", stock_returns, benchmark_returns, "2024-02-01"
         )
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("AAA", "SPX", period="5d", plot=False)
 
         self.assertAlmostEqual(result["alpha"], alpha, places=10)
@@ -85,7 +85,7 @@ class TestSingleIndexRegression(unittest.TestCase):
 
         prices = _create_mock_prices("NOISY", "BENCH", stock_returns, benchmark_returns)
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("NOISY", "BENCH", period="5d", plot=False)
 
         self.assertGreater(result["NOISY_daily_idiosyncratic_volatility"], 0.0)
@@ -100,7 +100,7 @@ class TestSingleIndexRegression(unittest.TestCase):
 
         prices = _create_mock_prices("CONST", "BENCH", stock_returns, benchmark_returns)
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("CONST", "BENCH", period="5d", plot=False)
 
         self.assertAlmostEqual(result["beta"], 0.0, places=10)
@@ -115,7 +115,7 @@ class TestSingleIndexRegression(unittest.TestCase):
 
         prices = _create_mock_prices("INV", "BENCH", stock_returns, benchmark_returns)
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("INV", "BENCH", period="5d", plot=False)
 
         self.assertAlmostEqual(result["beta"], beta, places=10)
@@ -126,7 +126,7 @@ class TestSingleIndexRegression(unittest.TestCase):
         """Test that empty data raises ValueError."""
         empty_prices = pd.DataFrame()
 
-        with patch("src.singleFactor.yf.download", return_value=empty_prices):
+        with patch("src.apm.yf.download", return_value=empty_prices):
             with self.assertRaises(ValueError) as context:
                 single_index_regression("EMPTY", "BENCH", period="5d", plot=False)
 
@@ -141,7 +141,7 @@ class TestSingleIndexRegression(unittest.TestCase):
             "MYTICKER", "SPY", stock_returns, benchmark_returns
         )
 
-        with patch("src.singleFactor.yf.download", return_value=prices):
+        with patch("src.apm.yf.download", return_value=prices):
             result = single_index_regression("MYTICKER", "SPY", period="5d", plot=False)
 
         expected_keys = {
