@@ -40,6 +40,91 @@ class Position:
     idiosyncratic_volatility: float = 0.0
 
 
+def _render_table(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    aligns: list[str] | None = None,
+) -> str:
+    if aligns is None:
+        aligns = ["<"] * len(headers)
+    if len(aligns) != len(headers):
+        raise ValueError("aligns must match headers length.")
+    if any(len(row) != len(headers) for row in rows):
+        raise ValueError("All rows must have the same length as headers.")
+
+    widths = [
+        max(len(headers[i]), *(len(row[i]) for row in rows)) if rows else len(headers[i])
+        for i in range(len(headers))
+    ]
+
+    def fmt_row(row: list[str]) -> str:
+        parts = []
+        for i, cell in enumerate(row):
+            align = aligns[i]
+            if align == ">":
+                parts.append(cell.rjust(widths[i]))
+            elif align == "^":
+                parts.append(cell.center(widths[i]))
+            else:
+                parts.append(cell.ljust(widths[i]))
+        return " | ".join(parts)
+
+    header_line = fmt_row(headers)
+    sep_line = "-+-".join("-" * w for w in widths)
+    body = "\n".join(fmt_row(row) for row in rows) if rows else ""
+    return "\n".join(line for line in (header_line, sep_line, body) if line)
+
+
+def _print_table(
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    aligns: list[str] | None = None,
+) -> None:
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        print(title)
+        print(_render_table(headers, rows, aligns=aligns))
+        return
+
+    console = Console()
+    table = Table(title=title, show_header=True, header_style="bold")
+
+    if aligns is None:
+        aligns = ["<"] * len(headers)
+    if len(aligns) != len(headers):
+        raise ValueError("aligns must match headers length.")
+
+    for header, align in zip(headers, aligns, strict=True):
+        justify = "left"
+        if align == ">":
+            justify = "right"
+        elif align == "^":
+            justify = "center"
+        table.add_column(header, justify=justify)
+
+    for row in rows:
+        table.add_row(*row)
+
+    console.print(table)
+
+
+def _fmt_float(value: float, *, decimals: int = 4) -> str:
+    return f"{value:.{decimals}f}"
+
+
+def _fmt_int(value: int) -> str:
+    return f"{value:d}"
+
+
+def _fmt_currency(value: float, *, decimals: int = 2) -> str:
+    return f"${value:,.{decimals}f}"
+
+
 def _load_returns(
     stock_ticker: str,
     benchmark_ticker: str,
@@ -47,24 +132,38 @@ def _load_returns(
     period: str,
     interval: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    prices = yf.download(
-        [stock_ticker, benchmark_ticker],
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
-    )
+    if stock_ticker == benchmark_ticker:
+        prices = yf.download(
+            stock_ticker,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+        )
+    else:
+        prices = yf.download(
+            [stock_ticker, benchmark_ticker],
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False,
+        )
     if prices.empty:
         raise ValueError("No data returned from yfinance.")
 
     close = prices["Close"] if "Close" in prices else prices["Adj Close"]
     returns = close.pct_change().dropna()
-    returns = returns[[stock_ticker, benchmark_ticker]].dropna()
-    if returns.empty:
-        raise ValueError("Not enough data to compute returns.")
-
-    stock_returns = returns[stock_ticker].to_numpy()
-    benchmark_returns = returns[benchmark_ticker].to_numpy()
+    if stock_ticker == benchmark_ticker:
+        if returns.empty:
+            raise ValueError("Not enough data to compute returns.")
+        stock_returns = returns.to_numpy()
+        benchmark_returns = stock_returns.copy()
+    else:
+        returns = returns[[stock_ticker, benchmark_ticker]].dropna()
+        if returns.empty:
+            raise ValueError("Not enough data to compute returns.")
+        stock_returns = returns[stock_ticker].to_numpy()
+        benchmark_returns = returns[benchmark_ticker].to_numpy()
     return stock_returns, benchmark_returns
 
 
@@ -74,6 +173,7 @@ def _single_index_fit(
 ) -> tuple[float, float]:
     x = np.column_stack([np.ones_like(benchmark_returns), benchmark_returns])
     beta_vec, *_ = np.linalg.lstsq(x, stock_returns, rcond=None)
+    beta_vec = np.asarray(beta_vec).ravel()
     alpha, beta = float(beta_vec[0]), float(beta_vec[1])
     return alpha, beta
 
@@ -210,7 +310,7 @@ def portfolio_volatility(
 
 
 def main() -> None:
-    benchmark_ticker = "^GSPC"
+    benchmark_ticker = "SPY"
     portfolio = {"NVDA": 10_000_000, "WMT": 5_000_000, "SPY": 10_000_000}
     regressions: dict[str, dict[str, float]] = {}
 
@@ -219,11 +319,27 @@ def main() -> None:
             ticker, benchmark_ticker, period="1y", plot=False
         )
 
-    print("Single index regressions:")
-    for ticker, regression in regressions.items():
-        print(f"\n{ticker}:")
-        for key, value in regression.items():
-            print(f"{key}: {value:,.4f}".replace(",", "_"))
+    regression_rows: list[list[str]] = []
+    for ticker in portfolio:
+        reg = regressions[ticker]
+        idio_key = f"{ticker}_daily_idiosyncratic_volatility"
+        regression_rows.append(
+            [
+                ticker,
+                _fmt_float(reg["alpha"]),
+                _fmt_float(reg["beta"]),
+                _fmt_float(reg["r_squared"]),
+                _fmt_float(reg[idio_key]),
+                _fmt_int(int(reg["observations"])),
+            ]
+        )
+
+    _print_table(
+        "Single index regressions (daily)",
+        ["Ticker", "Alpha", "Beta", "R^2", "Idio vol", "Obs"],
+        regression_rows,
+        aligns=["<", ">", ">", ">", ">", ">"],
+    )
 
     positions = [
         Position(
@@ -237,20 +353,46 @@ def main() -> None:
     ]
 
     volatility = portfolio_volatility(positions, market_volatility=0.014)
-    print("\nPortfolio volatility:")
-    for key, value in volatility.items():
-        if key.endswith("var"):
-            print(f"{key}: {value:,.4f}".replace(",", "_"))
-        else:
-            print(f"{key}: ${value:,.2f}".replace(",", "_"))
+    volatility_rows = [
+        ["portfolio_dollar_beta", _fmt_currency(volatility["portfolio_dollar_beta"])],
+        ["market_component", _fmt_currency(volatility["market_component"])],
+        ["idio_component", _fmt_currency(volatility["idio_component"])],
+        ["total_volatility", _fmt_currency(volatility["total_volatility"])],
+        ["annual_market_risk", _fmt_currency(volatility["annual_market_risk"])],
+        ["annual_idiosyncratic_risk", _fmt_currency(volatility["annual_idiosyncratic_risk"])],
+    ]
+    _print_table(
+        "Portfolio volatility (dollar risk)",
+        ["Metric", "Value"],
+        volatility_rows,
+        aligns=["<", ">"],
+    )
 
     hedge = market_hedge(positions)
-    print("\nMarket hedge:")
-    for key, value in hedge.items():
-        if key.startswith("dollar_betas"):
-            print(f"{key}: {value}")
-        else:
-            print(f"{key}: ${value:,.2f}".replace(",", "_"))
+    exposures_rows = []
+    for ticker, pos in zip(portfolio.keys(), positions, strict=True):
+        exposures_rows.append(
+            [
+                ticker,
+                _fmt_currency(pos.notional, decimals=0),
+                _fmt_float(pos.beta),
+                _fmt_currency(pos.notional * pos.beta, decimals=0),
+            ]
+        )
+    _print_table(
+        "Position exposures",
+        ["Ticker", "Notional", "Beta", "Dollar beta"],
+        exposures_rows,
+        aligns=["<", ">", ">", ">"],
+    )
+
+    hedge_rows = [
+        ["portfolio_dollar_beta", _fmt_currency(float(hedge["portfolio_dollar_beta"]))],
+        ["market_hedge_nmv", _fmt_currency(float(hedge["market_hedge_nmv"]), decimals=0)],
+        ["portfolio_beta", _fmt_float(float(hedge["portfolio_beta"]))],
+        ["hedged_portfolio_beta", _fmt_float(float(hedge["hedged_portfolio_beta"]))],
+    ]
+    _print_table("Market hedge summary", ["Metric", "Value"], hedge_rows, aligns=["<", ">"])
 
 
 if __name__ == "__main__":
