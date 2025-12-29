@@ -31,6 +31,10 @@ Example:
 
 
 TRADING_DAYS = 252
+DEFAULT_PERIOD = "1y"
+DEFAULT_INTERVAL = "1d"
+DEFAULT_START = None
+DEFAULT_END = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,7 @@ def _render_table(
     *,
     aligns: list[str] | None = None,
 ) -> str:
+    """Render a plain-text table with optional column alignment."""
     if aligns is None:
         aligns = ["<"] * len(headers)
     if len(aligns) != len(headers):
@@ -83,6 +88,7 @@ def _print_table(
     *,
     aligns: list[str] | None = None,
 ) -> None:
+    """Print a table with Rich when available, falling back to ASCII."""
     try:
         from rich.console import Console
         from rich.table import Table
@@ -114,14 +120,17 @@ def _print_table(
 
 
 def _fmt_float(value: float, *, decimals: int = 4) -> str:
+    """Format a float with a fixed number of decimals."""
     return f"{value:.{decimals}f}"
 
 
 def _fmt_int(value: int) -> str:
+    """Format an integer."""
     return f"{value:d}"
 
 
 def _fmt_currency(value: float, *, decimals: int = 2) -> str:
+    """Format a number as USD currency."""
     return f"${value:,.{decimals}f}"
 
 
@@ -131,12 +140,17 @@ def _load_returns(
     *,
     period: str,
     interval: str,
+    start: str | None,
+    end: str | None,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Download price data and return aligned daily returns arrays."""
     if stock_ticker == benchmark_ticker:
         prices = yf.download(
             stock_ticker,
             period=period,
             interval=interval,
+            start=start,
+            end=end,
             auto_adjust=True,
             progress=False,
         )
@@ -145,6 +159,8 @@ def _load_returns(
             [stock_ticker, benchmark_ticker],
             period=period,
             interval=interval,
+            start=start,
+            end=end,
             auto_adjust=True,
             progress=False,
         )
@@ -171,6 +187,7 @@ def _single_index_fit(
     stock_returns: np.ndarray,
     benchmark_returns: np.ndarray,
 ) -> tuple[float, float]:
+    """Fit a single-index regression and return alpha and beta."""
     x = np.column_stack([np.ones_like(benchmark_returns), benchmark_returns])
     beta_vec, *_ = np.linalg.lstsq(x, stock_returns, rcond=None)
     beta_vec = np.asarray(beta_vec).ravel()
@@ -187,6 +204,7 @@ def _plot_single_index(
     stock_ticker: str,
     benchmark_ticker: str,
 ) -> None:
+    """Plot stock vs benchmark returns with the fitted regression line."""
     plt.figure(figsize=(8, 6))
     plt.scatter(benchmark_returns, stock_returns, alpha=0.6, label="Daily returns")
     line_x = np.linspace(benchmark_returns.min(), benchmark_returns.max(), 200)
@@ -205,12 +223,20 @@ def single_index_regression(
     stock_ticker: str,
     benchmark_ticker: str,
     *,
-    period: str = "1y",
-    interval: str = "1d",
+    period: str = DEFAULT_PERIOD,
+    interval: str = DEFAULT_INTERVAL,
+    start: str | None = DEFAULT_START,
+    end: str | None = DEFAULT_END,
     plot: bool = True,
 ) -> dict[str, float]:
+    """Compute single-index regression metrics for a stock vs a benchmark."""
     stock_returns, benchmark_returns = _load_returns(
-        stock_ticker, benchmark_ticker, period=period, interval=interval
+        stock_ticker,
+        benchmark_ticker,
+        period=period,
+        interval=interval,
+        start=start,
+        end=end,
     )
     alpha, beta = _single_index_fit(stock_returns, benchmark_returns)
 
@@ -243,6 +269,7 @@ def single_index_regression(
 
 
 def market_hedge(positions: Iterable[Position]) -> dict[str, float | list[float]]:
+    """Compute hedge notional and portfolio beta metrics from positions."""
     positions_list = list(positions)
     if not positions_list:
         raise ValueError("At least one position is required.")
@@ -277,6 +304,7 @@ def portfolio_volatility(
     positions: Iterable[Position],
     market_volatility: float,
 ) -> dict[str, float]:
+    """Decompose portfolio volatility into market and idiosyncratic components."""
     positions_list = list(positions)
     if not positions_list:
         raise ValueError("At least one position is required.")
@@ -310,13 +338,20 @@ def portfolio_volatility(
 
 
 def main() -> None:
+    """Run a demo workflow for regressions, portfolio risk, and hedging."""
     benchmark_ticker = "SPY"
     portfolio = {"NVDA": 10_000_000, "WMT": 5_000_000, "SPY": 10_000_000}
     regressions: dict[str, dict[str, float]] = {}
 
     for ticker in portfolio:
         regressions[ticker] = single_index_regression(
-            ticker, benchmark_ticker, period="1y", plot=False
+            ticker,
+            benchmark_ticker,
+            period=DEFAULT_PERIOD,
+            interval=DEFAULT_INTERVAL,
+            start=DEFAULT_START,
+            end=DEFAULT_END,
+            plot=False,
         )
 
     regression_rows: list[list[str]] = []
